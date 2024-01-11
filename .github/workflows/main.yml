@@ -14,7 +14,7 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.18"
+          go-version: "1.18.3"
       - name: Build
         run: |
           go env CGO_ENABLED=0
