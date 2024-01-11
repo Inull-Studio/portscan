@@ -24,11 +24,11 @@ var (
 		GREEN: "\033[0;32m",
 		N:     "\033[0m"}
 	startTime = time.Now()
+	maxConns  = 4000
 	ip        = flag.String("ip", "", "ip 例如:-ip 192.168.1.123,10.10.0.3 或 -ip 192.168.1.1-123,10.10.10.3-254")
 	port      = flag.String("p", "22-1000", "端口号范围 例如:-p 80,81,88-1000")
 	timeout   = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
 	h         = flag.Bool("h", false, "帮助信息")
-	maxConns  = 4000
 	slowMode  = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
 )
 
