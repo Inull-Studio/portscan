@@ -24,7 +24,7 @@ var (
 		GREEN: "\033[0;32m",
 		N:     "\033[0m"}
 	startTime = time.Now()
-	maxConns  = 4000
+	maxConns  = 10000
 	ip        = flag.String("ip", "", "ip 例如:-ip 192.168.1.123,10.10.0.3 或 -ip 192.168.1.1-123,10.10.10.3-254")
 	port      = flag.String("p", "22-1000", "端口号范围 例如:-p 80,81,88-1000")
 	timeout   = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
@@ -60,13 +60,17 @@ func (s *ScanIp) getAllPort(port string) ([]int, error) {
 		startPort, err := s.filterPort(portArr2[0])
 		if err != nil {
 			fmt.Println(err)
-			continue
+			os.Exit(1)
 		}
 		//第一个端口先添加
 		ports = append(ports, startPort)
 		if len(portArr2) > 1 {
 			//添加第一个后面的所有端口
-			endPort, _ := s.filterPort(portArr2[1])
+			endPort, err := s.filterPort(portArr2[1])
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
 			endPort++
 			if endPort > startPort {
 				for i := 1; i < endPort-startPort; i++ {
@@ -105,19 +109,16 @@ func (s *ScanIp) ipUp(ip string) bool {
 	n, _, err := con.ReadFrom(rb)
 	if err != nil {
 		return false
-	} else {
-		rm, err := icmp.ParseMessage(1, rb[:n])
-		if err != nil {
-			return false
-		}
-		switch rm.Type {
-		case ipv4.ICMPTypeEchoReply:
-			con.Close()
-			return true
-		default:
-			con.Close()
-			return false
-		}
+	}
+	rm, err := icmp.ParseMessage(1, rb[:n])
+	if err != nil {
+		return false
+	}
+	switch rm.Type {
+	case ipv4.ICMPTypeEchoReply:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -142,7 +143,10 @@ func (s *ScanIp) isOpen(ip string, port int) bool {
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip, port), time.Duration(s.timeout*int(time.Millisecond)))
 	if err != nil {
 		if strings.Contains(err.Error(), "too many open files") {
-			fmt.Println("连接数超出系统限制!")
+			fmt.Println("连接数超出系统限制! 尝试-slow慢速模式")
+			os.Exit(1)
+		} else if strings.Contains(err.Error(), "lacked sufficient buffer space") {
+			fmt.Println("网络缓冲区已满! 尝试-slow慢速模式")
 			os.Exit(1)
 		}
 		return false
@@ -150,15 +154,12 @@ func (s *ScanIp) isOpen(ip string, port int) bool {
 	defer conn.Close()
 	return true
 }
-func (s *ScanIp) GetIpOpenPort(ip string, port string) []int {
+func (s *ScanIp) GetIpOpenPort(ip string, port string) ([]int, error) {
 	var (
 		openPorts []int
 		mutex     sync.Mutex
 	)
 	ports, _ := s.getAllPort(port)
-	if !s.ipUp(ip) {
-		return []int{}
-	}
 	wg := sync.WaitGroup{}
 	for _, p := range ports {
 		wg.Add(1)
@@ -178,10 +179,13 @@ func (s *ScanIp) GetIpOpenPort(ip string, port string) []int {
 		}(p)
 	}
 	wg.Wait()
-	return openPorts
+	return openPorts, nil
 }
 func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
-	var ips []string
+	var (
+		ips   []string
+		mutex sync.Mutex
+	)
 	tmpip := strings.Split(ip, ",")
 	for _, ip := range tmpip {
 		ipTmp := strings.Split(ip, "-")
@@ -193,32 +197,42 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 			return ips, errors.New(ipTmp[0] + " ip地址有误")
 		}
 		//域名转化成ip再塞回去
-		ipTmp[0] = firstIp.String()
-		ips = append(ips, ipTmp[0]) //最少有一个ip地址
-
-		if len(ipTmp) == 2 {
-			//以切割第一段ip取到最后一位
-			ipTmp2 := strings.Split(ipTmp[0], ".")
-			startIp, _ := strconv.Atoi(ipTmp2[3])
-			endIp, err := strconv.Atoi(ipTmp[1])
-			if err != nil || endIp < startIp {
-				endIp = startIp
-			}
-			if endIp > 255 {
-				endIp = 255
-			}
-			totalIp := endIp - startIp + 1
-			for i := 1; i < totalIp; i++ {
-				ips = append(ips, fmt.Sprintf("%s.%s.%s.%d", ipTmp2[0], ipTmp2[1], ipTmp2[2], startIp+i))
-			}
+		if len(ipTmp) == 1 {
+			ipTmp = append(ipTmp, firstIp.String())
 		}
+
+		//以切割第一段ip取到最后一位
+		ipTmp2 := strings.Split(ipTmp[0], ".")
+		startIp, _ := strconv.Atoi(ipTmp2[3])
+		endIp, err := strconv.Atoi(ipTmp[1])
+		if err != nil || endIp < startIp {
+			endIp = startIp
+		}
+		if endIp > 255 {
+			return []string{}, errors.New("IP地址不能超过255")
+		}
+		totalIp := endIp - startIp + 1
+		wg := sync.WaitGroup{}
+		for i := 0; i < totalIp; i++ {
+			wg.Add(1)
+			go func(i int) {
+				ip := fmt.Sprintf("%s.%s.%s.%d", ipTmp2[0], ipTmp2[1], ipTmp2[2], startIp+i)
+				mutex.Lock()
+				if s.ipUp(ip) {
+					ips = append(ips, ip)
+				}
+				mutex.Unlock()
+				wg.Done()
+			}(i)
+		}
+		wg.Wait()
 	}
 	return ips, nil
 }
 
 func main() {
 	fmt.Printf("Start %v \n", time.Now().Format(time.UnixDate))
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(2)
 	flag.Parse()
 	scanIP := ScanIp{
 		debug:   true,
@@ -238,7 +252,10 @@ func main() {
 	}
 	ips, _ := scanIP.GetAllIp(*ip)
 	for _, ip := range ips {
-		openports := scanIP.GetIpOpenPort(ip, *port)
+		openports, err := scanIP.GetIpOpenPort(ip, *port)
+		if err != nil {
+			continue
+		}
 		fmt.Printf("%s 开启端口数: %d\n", ip, len(openports))
 	}
 	//初始化
