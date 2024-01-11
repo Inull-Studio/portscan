@@ -16,16 +16,15 @@ jobs:
         with:
           go-version: "1.18"
       - name: Build
-        with:
-          run: |
-            go env CGO_ENABLED=0
-            go env GOOS=windows
-            go env GOARCH=amd64
-            go build -o releases/portscan.exe
-            go env CGO_ENABLED=0
-            go env GOOS=linux
-            go env GOARCH=amd64
-            go build -ldflags="-s -d" -o releases/portscan
+        run: |
+          go env CGO_ENABLED=0
+          go env GOOS=windows
+          go env GOARCH=amd64
+          go build -o releases/portscan.exe
+          go env CGO_ENABLED=0
+          go env GOOS=linux
+          go env GOARCH=amd64
+          go build -ldflags="-s -d" -o releases/portscan
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
