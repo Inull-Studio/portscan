@@ -9,6 +9,7 @@ echo init script
 cmd /c "%~f0 1234"
 goto :EOF
 :BUILD
+cd /d "%~dp0"
 echo Start Build
 set CGO_ENABLED=0
 set GOOS=windows
