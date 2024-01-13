@@ -30,6 +30,7 @@ var (
 	timeout   = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
 	h         = flag.Bool("h", false, "帮助信息")
 	slowMode  = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
+	verbose   = flag.Bool("v", false, "详细信息")
 )
 
 type ScanIp struct {
@@ -186,6 +187,9 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 		ips   []string
 		mutex sync.Mutex
 	)
+	if !strings.Contains(ip, ".") {
+		return ips, errors.New("未知IP")
+	}
 	tmpip := strings.Split(ip, ",")
 	for _, ip := range tmpip {
 		ipTmp := strings.Split(ip, "-")
@@ -219,6 +223,9 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 				ip := fmt.Sprintf("%s.%s.%s.%d", ipTmp2[0], ipTmp2[1], ipTmp2[2], startIp+i)
 				mutex.Lock()
 				if s.ipUp(ip) {
+					if *verbose {
+						fmt.Printf("%s 存活", ip)
+					}
 					ips = append(ips, ip)
 				}
 				mutex.Unlock()
