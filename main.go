@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,14 +22,13 @@ var (
 		RED:   "\033[0;31m",
 		GREEN: "\033[0;32m",
 		N:     "\033[0m"}
-	startTime = time.Now()
-	maxConns  = 10000
-	ip        = flag.String("ip", "", "ip 例如:-ip 192.168.1.123,10.10.0.3 或 -ip 192.168.1.1-123,10.10.10.3-254")
-	port      = flag.String("p", "22-1000", "端口号范围 例如:-p 80,81,88-1000")
-	timeout   = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
-	h         = flag.Bool("h", false, "帮助信息")
-	slowMode  = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
-	verbose   = flag.Bool("v", false, "详细信息")
+	maxConns = 10000
+	ip       = flag.String("ip", "", "ip 例如:-ip 192.168.1.123,10.10.0.3 或 -ip 192.168.1.1-123,10.10.10.3-254")
+	port     = flag.String("p", "22-1000", "端口号范围 例如:-p 80,81,88-1000")
+	timeout  = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
+	h        = flag.Bool("h", false, "帮助信息")
+	slowMode = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
+	verbose  = flag.Bool("v", false, "详细信息")
 )
 
 type ScanIp struct {
@@ -224,7 +222,7 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 				mutex.Lock()
 				if s.ipUp(ip) {
 					if *verbose {
-						fmt.Printf("%s 存活", ip)
+						fmt.Printf("%s ICMP存活\n", ip)
 					}
 					ips = append(ips, ip)
 				}
@@ -238,8 +236,9 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 }
 
 func main() {
-	fmt.Printf("Start %v \n", time.Now().Format(time.UnixDate))
-	runtime.GOMAXPROCS(2)
+	startTime := time.Now()
+	fmt.Printf("Start %s \n", startTime.String())
+	// runtime.GOMAXPROCS(2)
 	flag.Parse()
 	scanIP := ScanIp{
 		debug:   true,
@@ -265,6 +264,5 @@ func main() {
 		}
 		fmt.Printf("%s 开启端口数: %d\n", ip, len(openports))
 	}
-	//初始化
 	fmt.Printf("End %v 执行时长 : %.2fs \n", time.Now().Format(time.UnixDate), time.Since(startTime).Seconds())
 }
