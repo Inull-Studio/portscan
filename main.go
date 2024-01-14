@@ -26,7 +26,7 @@ var (
 	maxConns = 10000
 	ip       = flag.String("ip", "", "ip 例如:-ip 192.168.1.123,10.10.0.3 或 -ip 192.168.1.1-123,10.10.10.3-254")
 	port     = flag.String("p", "22-1000", "端口号范围 例如:-p 80,81,88-1000")
-	timeout  = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
+	timeout  = flag.Int("t", 500, "超时时长(毫秒) 例如:-t 200")
 	h        = flag.Bool("h", false, "帮助信息")
 	slowMode = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
 	noping   = flag.Bool("np", false, "不使用主机发现")
@@ -166,6 +166,7 @@ func (s *ScanIp) GetIpOpenPort(ip string, port string) ([]int, error) {
 	ports, _ := s.getAllPort(port)
 	wg := sync.WaitGroup{}
 	for _, p := range ports {
+		time.Sleep(time.Nanosecond)
 		wg.Add(1)
 		go func(port int) {
 			s.connLimiter <- struct{}{}
