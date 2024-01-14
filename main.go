@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ var (
 	timeout  = flag.Int("t", 200, "超时时长(毫秒) 例如:-t 200")
 	h        = flag.Bool("h", false, "帮助信息")
 	slowMode = flag.Bool("slow", false, "慢速模式，防止连接数超过系统限制")
+	noping   = flag.Bool("np", false, "不使用主机发现")
 	verbose  = flag.Bool("v", false, "详细信息")
 )
 
@@ -96,12 +98,14 @@ func (s *ScanIp) ipUp(ip string) bool {
 	if err != nil {
 		return false
 	}
-	_, err = con.WriteTo(b, &net.IPAddr{IP: net.ParseIP(ip)})
+
+	addr, _ := net.ResolveIPAddr("ip", ip)
+	_, err = con.WriteTo(b, addr)
 	if err != nil {
 		return false
 	}
 	rb := make([]byte, 1500)
-	err = con.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(*timeout)))
+	err = con.SetReadDeadline(time.Now().Add(time.Duration(s.timeout * 2)))
 	if err != nil {
 		return false
 	}
@@ -114,10 +118,11 @@ func (s *ScanIp) ipUp(ip string) bool {
 		return false
 	}
 	switch rm.Type {
-	case ipv4.ICMPTypeEchoReply:
-		return true
 	default:
-		return false
+		if *verbose {
+			fmt.Printf("%s ICMP存活okok\n", ip)
+		}
+		return true
 	}
 }
 
@@ -182,13 +187,14 @@ func (s *ScanIp) GetIpOpenPort(ip string, port string) ([]int, error) {
 }
 func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 	var (
-		ips   []string
 		mutex sync.Mutex
+		ips   []string
 	)
 	if !strings.Contains(ip, ".") {
 		return ips, errors.New("未知IP")
 	}
 	tmpip := strings.Split(ip, ",")
+	wg := sync.WaitGroup{}
 	for _, ip := range tmpip {
 		ipTmp := strings.Split(ip, "-")
 		firstIp, err := net.ResolveIPAddr("ip", ipTmp[0])
@@ -211,34 +217,34 @@ func (s *ScanIp) GetAllIp(ip string) ([]string, error) {
 			endIp = startIp
 		}
 		if endIp > 255 {
-			return []string{}, errors.New("IP地址不能超过255")
+			return ips, errors.New("IP地址范围 1-255")
 		}
 		totalIp := endIp - startIp + 1
-		wg := sync.WaitGroup{}
+		//ICMP存活检测
 		for i := 0; i < totalIp; i++ {
 			wg.Add(1)
 			go func(i int) {
 				ip := fmt.Sprintf("%s.%s.%s.%d", ipTmp2[0], ipTmp2[1], ipTmp2[2], startIp+i)
 				mutex.Lock()
-				if s.ipUp(ip) {
-					if *verbose {
-						fmt.Printf("%s ICMP存活\n", ip)
+				if !*noping {
+					if s.ipUp(ip) {
+						ips = append(ips, ip)
 					}
+				} else {
 					ips = append(ips, ip)
 				}
 				mutex.Unlock()
 				wg.Done()
 			}(i)
 		}
-		wg.Wait()
 	}
+	wg.Wait()
 	return ips, nil
 }
 
 func main() {
 	startTime := time.Now()
-	fmt.Printf("Start %s \n", startTime.String())
-	// runtime.GOMAXPROCS(2)
+	fmt.Printf("Start %s \n", startTime.Format("2006-01-02 15:04:05"))
 	flag.Parse()
 	scanIP := ScanIp{
 		debug:   true,
@@ -249,6 +255,9 @@ func main() {
 	if *h {
 		flag.Usage()
 		return
+	}
+	if *noping {
+		fmt.Println(Color.RED + "开启noping选项，扫描时间或许会大幅增加" + Color.N)
 	}
 	if *slowMode {
 		scanIP.initConnLimiter(1000)
@@ -262,7 +271,10 @@ func main() {
 		if err != nil {
 			continue
 		}
-		fmt.Printf("%s 开启端口数: %d\n", ip, len(openports))
+		if len(openports) != 0 {
+			fmt.Printf("%s 开启端口数: %d\n", ip, len(openports))
+		}
+		runtime.GC()
 	}
-	fmt.Printf("End %v 执行时长 : %.2fs \n", time.Now().Format(time.UnixDate), time.Since(startTime).Seconds())
+	fmt.Printf("End %v 执行时长 : %.2fs \n", time.Now().Format("2006-01-02 15:04:05"), time.Since(startTime).Seconds())
 }
